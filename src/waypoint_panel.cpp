@@ -50,6 +50,9 @@ WaypointPanel::WaypointPanel(QWidget * parent)
   // --- Waypoint List Section ---
   waypoint_list_ = new QListWidget;
   waypoint_list_->setStyleSheet("background-color: #ffffff; border: 1px solid #ccc; font-size: 10px;");
+  waypoint_list_->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(waypoint_list_, SIGNAL(customContextMenuRequested(const QPoint &)), this, SLOT(showContextMenu(const QPoint &)));
+
   main_layout->addWidget(new QLabel("Waypoints (Use tool on /waypoint):"));
   main_layout->addWidget(waypoint_list_);
 
@@ -101,10 +104,7 @@ void WaypointPanel::onInitialize()
   goal_sub_ = node_->create_subscription<geometry_msgs::msg::PoseStamped>(
     "/waypoint", 10, [this](const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
       waypoints_.push_back(*msg);
-      QString item_text = QString("[%1] %2, %3").arg(waypoints_.size())
-                          .arg(msg->pose.position.x, 0, 'f', 2)
-                          .arg(msg->pose.position.y, 0, 'f', 2);
-      waypoint_list_->addItem(item_text);
+      updateWaypointList();
       updateMarkers();
     });
 
@@ -170,12 +170,9 @@ void WaypointPanel::onLoadWaypoints()
       p.pose.position.x = v[0]; p.pose.position.y = v[1]; p.pose.position.z = v[2];
       p.pose.orientation.x = v[3]; p.pose.orientation.y = v[4]; p.pose.orientation.z = v[5]; p.pose.orientation.w = v[6];
       waypoints_.push_back(p);
-      
-      QString item_text = QString("[%1] %2, %3").arg(waypoints_.size())
-                          .arg(v[0], 0, 'f', 2).arg(v[1], 0, 'f', 2);
-      waypoint_list_->addItem(item_text);
     }
   }
+  updateWaypointList();
   updateMarkers();
   feedback_val_->setText("Loaded OK");
 }
@@ -314,6 +311,77 @@ void WaypointPanel::onCancelNavigation()
 
 void WaypointPanel::load(const rviz_common::Config & config) { rviz_common::Panel::load(config); }
 void WaypointPanel::save(rviz_common::Config config) const { rviz_common::Panel::save(config); }
+
+void WaypointPanel::updateWaypointList()
+{
+  waypoint_list_->clear();
+  for (size_t i = 0; i < waypoints_.size(); ++i) {
+    QString item_text = QString("[%1] %2, %3").arg(i + 1)
+                        .arg(waypoints_[i].pose.position.x, 0, 'f', 2)
+                        .arg(waypoints_[i].pose.position.y, 0, 'f', 2);
+    waypoint_list_->addItem(item_text);
+  }
+}
+
+void WaypointPanel::showContextMenu(const QPoint & pos)
+{
+  QListWidgetItem * item = waypoint_list_->itemAt(pos);
+  if (!item) return;
+
+  waypoint_list_->setCurrentItem(item);
+
+  QMenu menu(this);
+  
+  if (waypoint_list_->currentRow() > 0) {
+    QAction * moveUpAction = menu.addAction("Move Up");
+    connect(moveUpAction, SIGNAL(triggered()), this, SLOT(onMoveWaypointUp()));
+  }
+
+  if (waypoint_list_->currentRow() < waypoint_list_->count() - 1) {
+    QAction * moveDownAction = menu.addAction("Move Down");
+    connect(moveDownAction, SIGNAL(triggered()), this, SLOT(onMoveWaypointDown()));
+  }
+
+  QAction * deleteAction = menu.addAction("Delete Waypoint");
+  connect(deleteAction, SIGNAL(triggered()), this, SLOT(onDeleteWaypoint()));
+  
+  menu.exec(waypoint_list_->mapToGlobal(pos));
+}
+
+void WaypointPanel::onMoveWaypointUp()
+{
+  int currentRow = waypoint_list_->currentRow();
+  if (currentRow > 0 && currentRow < (int)waypoints_.size()) {
+    std::swap(waypoints_[currentRow], waypoints_[currentRow - 1]);
+    updateWaypointList();
+    updateMarkers();
+    waypoint_list_->setCurrentRow(currentRow - 1);
+    feedback_val_->setText(QString("Moved WP %1 Up").arg(currentRow + 1));
+  }
+}
+
+void WaypointPanel::onMoveWaypointDown()
+{
+  int currentRow = waypoint_list_->currentRow();
+  if (currentRow >= 0 && currentRow < (int)waypoints_.size() - 1) {
+    std::swap(waypoints_[currentRow], waypoints_[currentRow + 1]);
+    updateWaypointList();
+    updateMarkers();
+    waypoint_list_->setCurrentRow(currentRow + 1);
+    feedback_val_->setText(QString("Moved WP %1 Down").arg(currentRow + 1));
+  }
+}
+
+void WaypointPanel::onDeleteWaypoint()
+{
+  int currentRow = waypoint_list_->currentRow();
+  if (currentRow >= 0 && currentRow < (int)waypoints_.size()) {
+    waypoints_.erase(waypoints_.begin() + currentRow);
+    updateWaypointList();
+    updateMarkers();
+    feedback_val_->setText(QString("Deleted WP %1").arg(currentRow + 1));
+  }
+}
 
 void WaypointPanel::updateMarkers()
 {

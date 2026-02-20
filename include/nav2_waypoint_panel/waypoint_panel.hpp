@@ -36,6 +36,10 @@ protected Q_SLOTS:
   void onCancelNavigation();
   void onExportWaypoints();
   void onLoadWaypoints();
+  void onDeleteWaypoint();
+  void onMoveWaypointUp();
+  void onMoveWaypointDown();
+  void showContextMenu(const QPoint & pos);
 
 protected:
   void sendWaypointGoal(const std::vector<geometry_msgs::msg::PoseStamped>& poses);
@@ -85,6 +89,7 @@ protected:
   // Helper
   void updateDashboard(const nav2_msgs::action::NavigateToPose::Feedback & feedback);
   void checkSystemStatus();
+  void updateWaypointList();
   QTimer * status_timer_;
 };
 
